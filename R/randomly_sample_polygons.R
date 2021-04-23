@@ -156,4 +156,6 @@ random_sample_function <- function(id_number, grain_size){
 }
 
 lapply(c(1:1000), function(x){random_sample_function(x, 500000)})
-
+lapply(c(1001:2000), function(x){random_sample_function(x, 500000)})
+lapply(c(1:1000), function(x){random_sample_function(x, 100000)})
+lapply(c(1001:2000), function(x){random_sample_function(x, 100000)})
