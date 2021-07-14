@@ -122,7 +122,11 @@ species_sd <- data_500_km_all %>%
   summarize(N=n(),
             sd_urban=sd(adjusted_viirs),
             mean_urban=mean(adjusted_viirs),
-            sd_total=sd(total_median_viirs))
+            sd_total=sd(total_median_viirs),
+            range_urban=max(adjusted_viirs)-min(adjusted_viirs)) 
+
+sd_buffers <- species_sd %>%
+  mutate(testing=sd_urban-sd_total)
 
 ggplot(species_sd, aes(x=sd_urban, y=sd_total))+
   geom_point()+
@@ -134,3 +138,34 @@ ggplot(species_sd, aes(x=sd_urban, y=sd_total))+
   ylab("Buffer SD of urban sampling")+
   geom_smooth(method="lm")
 
+ggplot(species_sd, aes(x=sd_urban, y=mean_urban))+
+  geom_point()+
+  theme_bw()+
+  theme(axis.text=element_text(color="black"))+
+  #scale_x_log10()+
+  #scale_y_log10()+
+  xlab("Species-specific SD of urban scores")+
+  ylab("Mean urban score of all buffers")+
+  geom_smooth(method="lm")
+
+ggplot(species_sd, aes(x=N, y=sd_urban))+
+  geom_point()+
+  theme_bw()+
+  theme(axis.text=element_text(color="black"))+
+  #scale_x_log10()+
+  #scale_y_log10()+
+  xlab("Number of buffers")+
+  ylab("Species-specific SD of urban scores")+
+  geom_smooth(method="lm")
+
+# Try getting their rank for each sample for every species
+test <- data_500_km_all %>%
+  mutate(adjusted_viirs=median_viirs-total_median_viirs) %>%
+  ungroup() %>%
+  group_by(sample) %>%
+  arrange(sample, desc(adjusted_viirs)) %>%
+  mutate(rank=)
+
+# try CV
+# look at range of differences
+# look at whether positive and negative mixes a lot
