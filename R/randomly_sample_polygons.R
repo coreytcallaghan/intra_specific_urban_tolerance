@@ -71,9 +71,13 @@ st_crs(states_sf)
 # then writes out this summary somehow
 
 # first create a random sample of 10,000 points in the us
-potential_points <- st_sample(states_sf, 10000) %>%
-  st_as_sf() %>%
-  mutate(ID=1:nrow(.))
+# potential_points <- st_sample(states_sf, 10000) %>%
+#   st_as_sf() %>%
+#   mutate(ID=1:nrow(.))
+# 
+# saveRDS(potential_points, "Data/potential_sample_points.RDS")
+
+potential_points <- readRDS("Data/potential_sample_points.RDS")
 
 states_sf %>% 
   ggplot(aes()) +
@@ -82,7 +86,7 @@ states_sf %>%
 
 random_sample_function <- function(id_number, grain_size){
   
-  message(paste0("Analyzing poin id number: ", id_number))
+  message(paste0("Analyzing point id number: ", id_number))
   
   # filter to point
   point <- potential_points %>%
@@ -125,7 +129,7 @@ random_sample_function <- function(id_number, grain_size){
     left_join(ebird_data, by="SAMPLING_EVENT_IDENTIFIER")
   
   species_summary <- buff_ebird_dat %>%
-    dplyr::filter(complete.cases(.)) %>%
+    dplyr::filter(complete.cases(viirs)) %>%
     group_by(COMMON_NAME, SCIENTIFIC_NAME) %>%
     summarize(obs=n(),
               mean_viirs=mean(viirs),
@@ -137,17 +141,79 @@ random_sample_function <- function(id_number, grain_size){
   all_samples_summary <- buff_ebird_dat %>%
     dplyr::select(SAMPLING_EVENT_IDENTIFIER, viirs) %>%
     distinct() %>%
-    dplyr::filter(complete.cases(.)) %>%
+    dplyr::filter(complete.cases(viirs)) %>%
     summarize(total_obs=n(),
               total_mean_viirs=mean(viirs),
               total_median_viirs=median(viirs),
               total_sd_viirs=sd(viirs),
               total_max_viirs=max(viirs))
   
-  final_summary <- bind_cols(species_summary, all_samples_summary) %>%
+  temp_summary <- bind_cols(species_summary, all_samples_summary) %>%
     mutate(point_ID=id_number) %>%
     mutate(LATITUDE=st_coordinates(point2)[2]) %>%
-    mutate(LONGITUDE=st_coordinates(point2[1]))
+    mutate(LONGITUDE=st_coordinates(point2[1])) %>%
+    mutate(UT_median=median_viirs-total_median_viirs) %>%
+    mutate(UT_mean=mean_viirs-total_mean_viirs)
+  
+  # Now for all the species in this buffer
+  # create a resampled version of the adjusted viirs
+  # for this we'll sample 50 observations of the 100 minimum
+  randomized_UT <- function(species_name){
+    
+    boot_function <- function(sample_number){
+      
+      sp_dat_random <- buff_ebird_dat %>%
+        dplyr::filter(COMMON_NAME==species_name) %>%
+        sample_n(50) %>%
+        summarize(obs=n(),
+                  mean_viirs=mean(viirs),
+                  median_viirs=median(viirs),
+                  sd_viirs=sd(viirs),
+                  max_viirs=max(viirs)) %>%
+        mutate(COMMON_NAME=species_name)
+      
+      
+      all_dat_random <- buff_ebird_dat %>%
+        dplyr::select(SAMPLING_EVENT_IDENTIFIER, viirs) %>%
+        distinct() %>%
+        sample_n(50) %>%
+        dplyr::filter(complete.cases(viirs)) %>%
+        summarize(total_obs=n(),
+                  total_mean_viirs=mean(viirs),
+                  total_median_viirs=median(viirs),
+                  total_sd_viirs=sd(viirs),
+                  total_max_viirs=max(viirs)) %>%
+        mutate(COMMON_NAME=species_name)
+      
+      
+      random_sample <- sp_dat_random %>%
+        left_join(., all_dat_random) %>%
+        mutate(UT_median=median_viirs-total_median_viirs) %>%
+        mutate(UT_mean=mean_viirs-total_mean_viirs) %>%
+        mutate(sample=sample_number) %>%
+        dplyr::select(COMMON_NAME, UT_median, UT_mean, sample)
+      
+    }
+   
+    # apply boot to do it 100 times
+    boot_samples <- bind_rows(lapply(c(1:100), boot_function))
+    
+    boot_summary <- boot_samples %>%
+      group_by(COMMON_NAME) %>%
+      summarize(UT_median_mean=mean(UT_median),
+                UT_median_sd=sd(UT_median),
+                UT_mean_mean=mean(UT_mean),
+                UT_mean_sd=sd(UT_mean)) %>%
+    ungroup()
+     
+    return(boot_summary)
+  }
+  
+  # now apply this to all species that are in the 'temp summary'
+  boot_summary_all <- bind_rows(lapply(unique(temp_summary$COMMON_NAME), randomized_UT))
+  
+  final_summary <- temp_summary %>%
+    left_join(., boot_summary_all, by="COMMON_NAME")
   
   size=grain_size/1000
   
