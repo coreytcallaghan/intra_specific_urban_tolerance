@@ -374,16 +374,45 @@ species_results %>%
   geom_smooth(method="lm")
 
 
+########################
+########################
+######### LOOK at residuals vs some
+### traits
+trait_data <- resids %>%
+  left_join(., readRDS("Data/predictor_variables.RDS")) %>%
+  mutate(intra_species_variability=abs(residual))
 
 
+ggplot(trait_data, aes(x=migration_status, y=intra_species_variability))+
+  geom_violin()+
+  coord_flip()+
+  theme_bw()+
+  theme(axis.text=element_text(color="black"))
 
+ggplot(trait_data, aes(x=brain_residual, y=intra_species_variability))+
+  geom_point()+
+  theme_bw()+
+  theme(axis.text=element_text(color="black"))+
+  geom_smooth(method="lm")
 
+ggplot(trait_data, aes(x=brain_residual, y=residual))+
+  geom_point()+
+  theme_bw()+
+  theme(axis.text=element_text(color="black"))+
+  geom_smooth(method="lm")
 
+ggplot(trait_data, aes(x=habitat_generalism_scaled, y=intra_species_variability))+
+  geom_point()+
+  theme_bw()+
+  theme(axis.text=element_text(color="black"))+
+  geom_smooth(method="lm")
 
-
-
-
-
+ggplot(trait_data, aes(x=adult_body_mass_g, y=intra_species_variability))+
+  geom_point()+
+  theme_bw()+
+  theme(axis.text=element_text(color="black"))+
+  geom_smooth(method="lm")+
+  scale_x_log10()
 
 
 
