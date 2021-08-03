@@ -10,11 +10,9 @@ library(sf)
 library(ggridges)
 library(forcats)
 library(patchwork)
+library(rnaturalearth)
 
 files <- list.files("random_polygon_results/500_km")
-
-
-
 
 # summarize data function
 aggregate_data_500 <- function(file_name){
@@ -46,30 +44,41 @@ sample_lat_lng <- readRDS("Data/potential_sample_points.RDS") %>%
 data_500_km_all <- data_500_km_all %>%
   left_join(., sample_lat_lng)
 
-# Make a couple of big plots
-ggplot(data_500_km_all, aes(x=total_median_viirs, y=UT_median_mean))+
-  geom_point()+
-  theme_bw()
-
-
-data_500_km_all %>%
-  group_by(sample) %>%
-  summarize(number_species=n(),
-            total_median_viirs=mean(total_median_viirs),
-            positive_species=sum(UT_median>0),
-            negative_species=sum(UT_median<0)) %>%
-  mutate(proportion_negative=negative_species/number_species) %>%
-  ggplot(., aes(x=total_median_viirs, y=proportion_negative))+
-  geom_point()+
-  theme_bw()+
-  theme(axis.text=element_text(color="black"))
-
+# first
+# check if the resampling process is strongly correlated with the total process
+# will probably be a good methods supplementary figure
 ggplot(data_500_km_all, aes(x=UT_median, y=UT_median_mean))+
   geom_point()+
   geom_smooth(method="lm")+
-  theme_bw()
+  theme_bw()+
+  theme(axis.text=element_text(color="black"))+
+  xlab("Urban tolerance using all observations")+
+  ylab("Urban tolerance resampled using 50 observations")
 
+ggsave("Figures/ut_resampling_figure.png", width=6.1, height=5.8, units="in")
 
+# how many species per buffer met the 'cutoff'
+# because this can differ based on the total number of observations
+# and the region in the US where the buffer was calculated
+# this is mostly about sampling design than results or anything
+buffer_species <- data_500_km_all %>%
+  group_by(sample) %>%
+  summarize(number_species=length(unique(COMMON_NAME)))
+
+ggplot(buffer_species, aes(x=number_species))+
+  geom_histogram(color="black", fill="gray70")+
+  theme_bw()+
+  theme(axis.text=element_text(color="black"))+
+  xlab("Number of species included")+
+  ylab("Number of buffers")
+
+ggsave("Figures/species_per_buffer.png", width=6.1, height=5.8, units="in")
+
+# calculate the standard deviation
+# of all urban tolerance scores
+# as well as the mean of all urban tolerance scores
+# for each species, and importantly calculate the number of
+# buffers a species is found in as well
 species_sd <- data_500_km_all %>%
   group_by(COMMON_NAME) %>%
   summarize(N=n(),
@@ -78,35 +87,92 @@ species_sd <- data_500_km_all %>%
             sd_total=sd(total_median_viirs),
             range_urban=max(UT_median)-min(UT_median))
 
+ggplot(species_sd, aes(x=N))+
+  geom_histogram(color="black", fill="gray70")+
+  theme_bw()+
+  theme(axis.text=element_text(color="black"))+
+  xlab("Number of buffers occupied")+
+  ylab("Number of species")
+
+ggsave("Figures/sample_size_per_species.png", width=6.1, height=5.8, units="in")
+
+# make a boxplot showing the
+# mean urban tolerance scores (so the mean of all urban tolerance scores)
+# versus the sd of urban tolerance scores (the SD of all urban tolerance scores)
+# but because the mean can be negative
+# scale both values from 0-1
+inter_vs_intra <- species_sd %>%
+  mutate(`Intra-specific`=scales::rescale(sd_urban)) %>%
+  mutate(`Inter-specific`=scales::rescale(mean_urban)) %>%
+  dplyr::select(COMMON_NAME, `Intra-specific`, `Inter-specific`) %>%
+  pivot_longer(!COMMON_NAME, names_to="type", values_to="value") %>%
+  ggplot(.) +
+  geom_boxplot(aes(y=type, x=value, fill=type))+
+  theme_bw()+
+  theme(axis.text=element_text(color='black'))+
+  scale_fill_brewer(palette="Dark2")+
+  xlab("Standardized urban tolerance metric")+
+  ylab("")+
+  guides(fill=FALSE)+ 
+  ggtitle("(B)")
+
+inter_vs_intra
+
+ggsave("Figures/inter_vs_intra_boxplot.png", width=6.1, height=5.8, units="in")
+
 # do species that are, on average across all buffers, selecting towards urban habitat
 # versus those that are selecting against it have more variability in their urban scores among
 # regions?
-species_sd %>%
-  mutate(association=ifelse(mean_urban>0, "positive", "negative")) %>%
+positive_vs_negative <- species_sd %>%
+  mutate(association=ifelse(mean_urban>0, "Mean positive", "Mean negative")) %>%
   ggplot(., aes(x=association, y=sd_urban, fill=association))+
-  geom_violin()+
+  geom_boxplot()+
   coord_flip()+
   theme_bw()+
   theme(axis.text=element_text(color="black"))+
-  scale_fill_brewer(palette="Dark2")
+  scale_fill_brewer(palette="Dark2")+
+  ylab("Standard deviation of urban tolerance")+
+  xlab("")+
+  guides(fill=FALSE)+ 
+  ggtitle("(C)")
+
+positive_vs_negative
+
+ggsave("Figures/positive_vs_negative_species.png", width=6.1, height=5.8, units="in")
+
+# make a scatterplot
+inter_vs_intra_scatter <- species_sd %>%
+  ggplot(., aes(x=mean_urban, y=sd_urban))+
+  geom_point()+
+  theme_bw()+
+  theme(axis.text=element_text(color="black"))+
+  ylab("Standard deviation of urban tolerance")+
+  xlab("Mean urban tolerance")+
+  geom_smooth(method="lm")+ 
+  ggtitle("(A)")
+
+inter_vs_intra_scatter
+
+# make a plot where things are ranked by species
+# not loving it, but will save in here for now
+inter_vs_intra_species <- species_sd %>%
+  arrange(mean_urban) %>%
+  ggplot(., aes(x=fct_inorder(COMMON_NAME), y=mean_urban))+
+  geom_point()+
+  geom_errorbar((aes(ymax=mean_urban+sd_urban, ymin=mean_urban-sd_urban)))
+
+inter_vs_intra_species
+
+# put some figures together for a final figure
+# potentially for the paper
+inter_vs_intra_scatter  / (inter_vs_intra  | positive_vs_negative) + plot_layout(nrow=2)
+
+ggsave("Figures/all_species_summary.png", width=7.3, height=6.8, units="in")
+
 
 # now look at the sd of the buffers
 # a species is found in
 # does that correlate with the sd of the species
-sd_buffers <- species_sd %>%
-  mutate(testing=sd_urban-sd_total)
-
-ggplot(species_sd, aes(y=sd_urban, x=sd_total))+
-  geom_point()+
-  theme_bw()+
-  theme(axis.text=element_text(color="black"))+
-  scale_x_log10()+
-  scale_y_log10()+
-  ylab("Species-specific SD of urban scores")+
-  xlab("Buffer SD of urban sampling")+
-  geom_smooth(method="lm")+
-  geom_abline(slope=1, intercept=0, color="red", linetype="dashed")
-
 ggplot(species_sd, aes(y=sd_urban, x=sd_total, size=N))+
   geom_point()+
   theme_bw()+
@@ -115,27 +181,14 @@ ggplot(species_sd, aes(y=sd_urban, x=sd_total, size=N))+
   scale_y_log10()+
   ylab("Species-specific SD of urban scores")+
   xlab("Buffer SD of urban sampling")+
-  geom_smooth(method="lm")+
-  geom_abline(slope=1, intercept=0, color="red", linetype="dashed")
+  geom_smooth(method="lm", show.legend = FALSE)+
+  geom_abline(slope=1, intercept=0, color="red", linetype="dashed")+
+  guides(size=guide_legend(title="Number of buffers"))+
+  theme(legend.position="bottom")
 
+ggsave("Figures/sd_buffers_vs_sd_species_ut.png", width=7.6, height=6.1, units="in")
 
-mod <- lm(log10(sd_urban) ~ log10(sd_total) +log10(N), data=species_sd)
-summary(mod)
-
-resids <- species_sd %>%
-  mutate(residual=resid(mod))
-
-
-ggplot(species_sd, aes(x=sd_urban, y=mean_urban))+
-  geom_point()+
-  theme_bw()+
-  theme(axis.text=element_text(color="black"))+
-  #scale_x_log10()+
-  #scale_y_log10()+
-  xlab("Species-specific SD of urban scores")+
-  ylab("Mean urban score of all buffers")+
-  geom_smooth(method="lm")
-
+# plot sd as a function of N (number of buffers)
 ggplot(species_sd, aes(x=N, y=sd_urban))+
   geom_point()+
   theme_bw()+
@@ -146,187 +199,151 @@ ggplot(species_sd, aes(x=N, y=sd_urban))+
   ylab("Species-specific SD of urban scores")+
   geom_smooth(method="lm")
 
-# Try getting their rank for each sample for every species
-test <- data_500_km_all %>%
-  mutate(adjusted_viirs=median_viirs-total_median_viirs) %>%
-  ungroup() %>%
-  group_by(sample) %>%
-  arrange(sample, desc(adjusted_viirs)) %>%
-  mutate(rank=)
+ggsave("Figures/number_buffers_vs_sd_species_ut.png", width=7.6, height=6.1, units="in")
 
-# try CV
-# look at range of differences
-# look at whether positive and negative mixes a lot
+# fit a simple linear model that puts these together
+# tests for whether across species, there is a significant difference among
+mod <- lm(log10(sd_urban) ~ log10(sd_total) +log10(N), data=species_sd)
+summary(mod)
+
+resids <- species_sd %>%
+  mutate(residual=resid(mod))
 
 
 
-# Pick some species
-# and make some ggridges figures where the ridges are high
-# medium
-# low ranked as urbanization
+############################################
+######### Now look at some spatial stuff
+######### Make some example plots of example species
+##################################################
 
+# read in points
 # read in data necessary to do the sampling for example species
-potential_points <- readRDS("Data/potential_sample_points.RDS")
+potential_points <- readRDS("Data/potential_sample_points.RDS") %>%
+  dplyr::filter(ID<=2000)
 
-# read in checklists with viirs
-checklists <- read_csv("Data/checklists_viirs_scores/ebird_samples_viirs_scores.csv") %>%
-  dplyr::select(2, 3) %>%
-  rename(viirs=first) %>%
-  rename(SAMPLING_EVENT_IDENTIFIER=SAMPLIN)
+# make a map of the buffers sampled and their median urban level
+all_buffer_dat <- potential_points %>%
+  mutate(sample=as.character(as.integer(ID))) %>%
+  left_join(., data_500_km_all %>%
+              ungroup() %>%
+              dplyr::select(sample, total_median_viirs) %>%
+              distinct()) 
 
-# read in eBird dataset
-ebird_data <- readRDS("Data/ebird_data_raw_May.RDS") %>% 
-  bind_rows(readRDS("Data/ebird_data_raw_Jun.RDS")) %>%
-  bind_rows(readRDS("Data/ebird_data_raw_Jul.RDS")) %>%
-  bind_rows(readRDS("Data/ebird_data_raw_Aug.RDS")) %>%
-  left_join(., read_csv("Data/checklists_mod_scores/ebird_samples_mod_scores.csv") %>%
-              dplyr::select(first, SAMPLIN) %>%
-              rename(ghm=first) %>%
-              rename(SAMPLING_EVENT_IDENTIFIER=SAMPLIN), by="SAMPLING_EVENT_IDENTIFIER") %>%
-  left_join(., read_csv("Data/Clements-Checklist-v2019-August-2019.csv") %>%
-              dplyr::filter(category=="species") %>%
-              dplyr::select(category, `English name`, `scientific name`, order, family) %>%
-              rename(COMMON_NAME=`English name`,
-                     SCIENTIFIC_NAME=`scientific name`)) %>%
-  dplyr::filter(!family %in% c("Strigidae (Owls)", "Tytonidae (Barn-Owls)",
-                               "Stercorariidae (Skuas and Jaegers)", "Alcidae (Auks, Murres, and Puffins)",
-                               "Sulidae (Boobies and Gannets)", "Procellariidae (Shearwaters and Petrels)",
-                               "Hydrobatidae (Northern Storm-Petrels)", "Oceanitidae (Southern Storm-Petrels)")) %>%
-  dplyr::filter(complete.cases(BCR_CODE))
+ggplot()+
+  geom_sf(data=all_buffer_dat, aes(color=total_median_viirs))+
+  theme_bw()+
+  theme(axis.text=element_text(color="black"))+
+  scale_color_viridis_c()
 
-# create a checklists sf object for spatial stuff below
-checklists_sf <- checklists %>%
-  left_join(ebird_data %>%
-              dplyr::select(SAMPLING_EVENT_IDENTIFIER, LONGITUDE, LATITUDE) %>%
-              distinct()) %>%
-  dplyr::filter(complete.cases(.)) %>%
-  st_as_sf(coords=c("LONGITUDE", "LATITUDE"), crs=4326)
-
-
-
-species_ex_function <- function(species_name){
+# plot the map of Urban tolerance
+# for a species
+# UT already adjusted for available urban habitat
+plot_species_map <- function(species_name){
   
-  summary <- data_500_km_all %>%
-    dplyr::filter(COMMON_NAME==species_name)
-  
-  # now read in data for the species
-  # from those samples where it occurs
-  get_data_function <- function(sample_number, grain_size=500000){
-    
-    # filter to point
-    point <- potential_points %>%
-      dplyr::filter(ID==sample_number)
-    
-    point2 <- point %>%
-      st_transform(crs=4326)
-    
-    # create a random buffer that is specified by the grain size
-    buff <- point %>%
-      st_buffer(grain_size)
-    
-    buff2 <- buff %>%
-      st_transform(crs=st_crs(checklists_sf))
-    
-    # now get all eBird checklists that fall within that buffer
-    lists <- checklists_sf %>%
-      st_intersects(buff2) %>%
-      as.data.frame()
-    
-    buff_ebird_dat <- checklists_sf %>%
-      as.data.frame() %>%
-      dplyr::select(SAMPLING_EVENT_IDENTIFIER, viirs) %>%
-      mutate(row.id=1:nrow(.)) %>%
-      right_join(., lists, by="row.id") %>%
-      dplyr::select(-row.id, -col.id) %>%
-      left_join(ebird_data, by="SAMPLING_EVENT_IDENTIFIER") %>%
-      dplyr::filter(COMMON_NAME==species_name) %>%
-      mutate(sample=sample_number)
-    
-    }
-  
-  dat <- bind_rows(lapply(unique(summary$sample), get_data_function))
-  
-  final_sp_dat <- dat %>%
-    left_join(., summary %>%
+  dat <- potential_points  %>%
+    mutate(sample=as.character(as.integer(ID))) %>%
+    left_join(., data_500_km_all %>%
                 ungroup() %>%
-                dplyr::select(sample, total_median_viirs)) %>%
-    mutate(urban_category=case_when(total_median_viirs >= quantile(summary$total_median_viirs, 0.66) ~ "High",
-                                    total_median_viirs < quantile(summary$total_median_viirs, 0.66) & total_median_viirs >= quantile(summary$total_median_viirs, 0.33) ~ "Medium",
-                                    total_median_viirs < quantile(summary$total_median_viirs, 0.33) ~ "Low"))
+                dplyr::filter(COMMON_NAME==species_name) %>%
+                dplyr::select(sample, UT_median) %>%
+                distinct())
   
-  return(final_sp_dat)
+  ggplot()+
+    geom_sf(data=dat, aes(color=UT_median))+
+    theme_bw()+
+    theme(axis.text=element_text(color="black"))+
+    scale_color_viridis_c()
   
 }
 
 
+# How does the UT score change as a function
+# of the total urbanness of the randomly sampled buffer?
+# look at this for some example species
 # do this for four species for now
-ex_sp_list <- c("Canada Warbler", "White-winged Dove",
+ex_sp_list <- c("Canada Warbler", "Peregrine Falcon",
                 "Northern Cardinal", "Roseate Spoonbill")
 
+ex_sp_list <- c("Mourning Dove", "Mountain Chickadee",
+                "Northern Parula", "Pygmy Nuthatch",
+                "Northern Bobwhite", "Mallard")
 
-example_sp_dat <- bind_rows(lapply(ex_sp_list, species_ex_function))
+map_dat <- potential_points %>%
+  rename(sample=ID) %>%
+  mutate(sample=as.character(as.integer(sample))) %>%
+  left_join(., data_500_km_all %>%
+              ungroup() %>%
+              dplyr::filter(COMMON_NAME %in% ex_sp_list))
 
-cawa <- example_sp_dat %>%
-  dplyr::filter(COMMON_NAME=="Canada Warbler") %>%
-  ggplot(., aes(y=factor(urban_category, levels=c("Low", "Medium", "High")), x=viirs))+
-  geom_density_ridges()+
-  scale_x_log10()+
+# read in map of US
+us <- ne_countries(scale="medium", returnclass="sf", country = "United States of America")
+
+ggplot()+
+  geom_sf(data=us, fill="gray95", color="black")+
+  geom_sf(data=map_dat, aes(color=UT_median), size=0.5)+
+  xlim(130, 10)+
+  ylim(20, 50)+
   theme_bw()+
   theme(axis.text=element_text(color="black"))+
-  xlab("Urbanization (VIIRS night-time lights)")+
-  ylab("Categorical urbanization of buffer")+
-  facet_wrap(~COMMON_NAME)
+  theme(panel.grid=element_blank())+
+  facet_wrap(~COMMON_NAME, ncol=2)+
+  scale_color_viridis_c(name="Urban tolerance: ")+
+  theme(legend.position="bottom")
 
-cawa
+ggsave("Figures/map_example_sp_figure.png", width=8.6, height=8.5, units="in")
 
-rosp <- example_sp_dat %>%
-  dplyr::filter(COMMON_NAME=="Roseate Spoonbill") %>%
-  ggplot(., aes(y=factor(urban_category, levels=c("Low", "Medium", "High")), x=viirs))+
-  geom_density_ridges()+
-  scale_x_log10()+
-  theme_bw()+
-  theme(axis.text=element_text(color="black"))+
-  xlab("Urbanization (VIIRS night-time lights)")+
-  ylab("")+
-  facet_wrap(~COMMON_NAME)
+# function to make a tiny plot
+# for each species
+# but with a fitted gam model onto it
+species_scatter_function <- function(species_name){
+  
+  tmp <- data_500_km_all %>%
+    dplyr::filter(COMMON_NAME==species_name)
+  
+  
+  mod <- lm(UT_median ~ total_median_viirs, data=tmp)
+  mod2 <- mgcv::gam(UT_median ~ total_median_viirs + s(lng, lat, k=4), data=tmp)
+  
+  summary <- broom::tidy(mod2, parametric=TRUE) %>%
+    mutate(N=nrow(tmp)) %>%
+    mutate(prop_negative=sum(tmp$UT_median<0)/nrow(tmp)) %>%
+    mutate(COMMON_NAME=species_name) %>%
+    mutate(upr_95=confint.gam(mod2)$`97.5%`) %>%
+    mutate(lwr_95=confint.gam(mod2)$`2.5%`)
+  
+  plot <- ggplot(tmp, aes(x=total_median_viirs, y=UT_median))+
+    geom_point(size=0.5, color="transparent")+
+    theme_bw()+
+    theme(axis.text=element_text(color="black"))+
+    geom_abline(intercept=summary$estimate[1], slope=summary$estimate[2], 
+                linetype="solid", color="blue", size=1)+
+    geom_abline(intercept=summary$upr_95[1], slope=summary$upr_95[2], 
+                linetype="dashed", color="blue", size=0.7)+
+    geom_abline(intercept=summary$lwr_95[1], slope=summary$lwr_95[2], 
+                linetype="dashed", color="blue", size=0.7)+
+    xlab("Median VIIRS of sampled checklists")+
+    ylab("Urban tolerance")+
+    theme(axis.text=element_text(size=4))+
+    theme(axis.title=element_text(size=6))+
+    theme(panel.grid=element_blank())
+  
+  plot
+  
+  ggsave(paste0("Figures/", species_name, "_example_scatter.png"), height=1.3, width=2, units="in")
+  
+  return(plot)
+  
+}
 
-rosp
+moch <- species_scatter_function("Mountain Chickadee")
+modo <- species_scatter_function("Mourning Dove")
+nopa <- species_scatter_function("Northern Parula")
+pynu <- species_scatter_function("Pygmy Nuthatch")
+nobo <- species_scatter_function("Northern Bobwhite")
+mall <- species_scatter_function("Mallard")
 
-wwdo <- example_sp_dat %>%
-  dplyr::filter(COMMON_NAME=="White-winged Dove") %>%
-  ggplot(., aes(y=factor(urban_category, levels=c("Low", "Medium", "High")), x=viirs))+
-  geom_density_ridges()+
-  scale_x_log10()+
-  theme_bw()+
-  theme(axis.text=element_text(color="black"))+
-  xlab("")+
-  ylab("")+
-  facet_wrap(~COMMON_NAME)
+mall + moch + modo + nobo + nopa + pynu + plot_layout(ncol=2)
 
-wwdo
-
-noca <- example_sp_dat %>%
-  dplyr::filter(COMMON_NAME=="Northern Cardinal") %>%
-  ggplot(., aes(y=factor(urban_category, levels=c("Low", "Medium", "High")), x=viirs))+
-  geom_density_ridges()+
-  scale_x_log10()+
-  theme_bw()+
-  theme(axis.text=element_text(color="black"))+
-  xlab("")+
-  ylab("Categorical urbanization of buffer")+
-  facet_wrap(~COMMON_NAME)
-
-noca
-
-
-
-noca + wwdo + cawa + rosp + plot_layout(ncol=2)
-
-
-
-
-
-# Some other exploration
 data_500_km_all %>%
   ungroup() %>%
   dplyr::filter(COMMON_NAME %in% ex_sp_list) %>%
@@ -413,6 +430,207 @@ ggplot(trait_data, aes(x=adult_body_mass_g, y=intra_species_variability))+
   theme(axis.text=element_text(color="black"))+
   geom_smooth(method="lm")+
   scale_x_log10()
+
+
+
+
+
+
+
+################################################################
+################################################################
+############### OLD STUFF that may be useful
+
+
+# Make a couple of big plots
+ggplot(data_500_km_all, aes(x=total_median_viirs, y=UT_median_mean))+
+  geom_point()+
+  theme_bw()
+
+
+data_500_km_all %>%
+  group_by(sample) %>%
+  summarize(number_species=n(),
+            total_median_viirs=mean(total_median_viirs),
+            positive_species=sum(UT_median>0),
+            negative_species=sum(UT_median<0)) %>%
+  mutate(proportion_negative=negative_species/number_species) %>%
+  ggplot(., aes(x=total_median_viirs, y=proportion_negative))+
+  geom_point()+
+  theme_bw()+
+  theme(axis.text=element_text(color="black"))
+
+
+
+
+# Pick some species
+# and make some ggridges figures where the ridges are high
+# medium
+# low ranked as urbanization
+
+# read in data necessary to do the sampling for example species
+potential_points <- readRDS("Data/potential_sample_points.RDS")
+
+# read in checklists with viirs
+checklists <- read_csv("Data/checklists_viirs_scores/ebird_samples_viirs_scores.csv") %>%
+  dplyr::select(2, 3) %>%
+  rename(viirs=first) %>%
+  rename(SAMPLING_EVENT_IDENTIFIER=SAMPLIN)
+
+# read in eBird dataset
+ebird_data <- readRDS("Data/ebird_data_raw_May.RDS") %>% 
+  bind_rows(readRDS("Data/ebird_data_raw_Jun.RDS")) %>%
+  bind_rows(readRDS("Data/ebird_data_raw_Jul.RDS")) %>%
+  bind_rows(readRDS("Data/ebird_data_raw_Aug.RDS")) %>%
+  left_join(., read_csv("Data/checklists_mod_scores/ebird_samples_mod_scores.csv") %>%
+              dplyr::select(first, SAMPLIN) %>%
+              rename(ghm=first) %>%
+              rename(SAMPLING_EVENT_IDENTIFIER=SAMPLIN), by="SAMPLING_EVENT_IDENTIFIER") %>%
+  left_join(., read_csv("Data/Clements-Checklist-v2019-August-2019.csv") %>%
+              dplyr::filter(category=="species") %>%
+              dplyr::select(category, `English name`, `scientific name`, order, family) %>%
+              rename(COMMON_NAME=`English name`,
+                     SCIENTIFIC_NAME=`scientific name`)) %>%
+  dplyr::filter(!family %in% c("Strigidae (Owls)", "Tytonidae (Barn-Owls)",
+                               "Stercorariidae (Skuas and Jaegers)", "Alcidae (Auks, Murres, and Puffins)",
+                               "Sulidae (Boobies and Gannets)", "Procellariidae (Shearwaters and Petrels)",
+                               "Hydrobatidae (Northern Storm-Petrels)", "Oceanitidae (Southern Storm-Petrels)")) %>%
+  dplyr::filter(complete.cases(BCR_CODE))
+
+# create a checklists sf object for spatial stuff below
+checklists_sf <- checklists %>%
+  left_join(ebird_data %>%
+              dplyr::select(SAMPLING_EVENT_IDENTIFIER, LONGITUDE, LATITUDE) %>%
+              distinct()) %>%
+  dplyr::filter(complete.cases(.)) %>%
+  st_as_sf(coords=c("LONGITUDE", "LATITUDE"), crs=4326)
+
+
+
+species_ex_function <- function(species_name){
+  
+  summary <- data_500_km_all %>%
+    dplyr::filter(COMMON_NAME==species_name)
+  
+  # now read in data for the species
+  # from those samples where it occurs
+  get_data_function <- function(sample_number, grain_size=500000){
+    
+    # filter to point
+    point <- potential_points %>%
+      dplyr::filter(ID==sample_number)
+    
+    point2 <- point %>%
+      st_transform(crs=4326)
+    
+    # create a random buffer that is specified by the grain size
+    buff <- point %>%
+      st_buffer(grain_size)
+    
+    buff2 <- buff %>%
+      st_transform(crs=st_crs(checklists_sf))
+    
+    # now get all eBird checklists that fall within that buffer
+    lists <- checklists_sf %>%
+      st_intersects(buff2) %>%
+      as.data.frame()
+    
+    buff_ebird_dat <- checklists_sf %>%
+      as.data.frame() %>%
+      dplyr::select(SAMPLING_EVENT_IDENTIFIER, viirs) %>%
+      mutate(row.id=1:nrow(.)) %>%
+      right_join(., lists, by="row.id") %>%
+      dplyr::select(-row.id, -col.id) %>%
+      left_join(ebird_data, by="SAMPLING_EVENT_IDENTIFIER") %>%
+      dplyr::filter(COMMON_NAME==species_name) %>%
+      mutate(sample=sample_number)
+    
+  }
+  
+  dat <- bind_rows(lapply(unique(summary$sample), get_data_function))
+  
+  final_sp_dat <- dat %>%
+    left_join(., summary %>%
+                ungroup() %>%
+                dplyr::select(sample, total_median_viirs)) %>%
+    mutate(urban_category=case_when(total_median_viirs >= quantile(summary$total_median_viirs, 0.66) ~ "High",
+                                    total_median_viirs < quantile(summary$total_median_viirs, 0.66) & total_median_viirs >= quantile(summary$total_median_viirs, 0.33) ~ "Medium",
+                                    total_median_viirs < quantile(summary$total_median_viirs, 0.33) ~ "Low"))
+  
+  return(final_sp_dat)
+  
+}
+
+
+# do this for four species for now
+ex_sp_list <- c("Canada Warbler", "White-winged Dove",
+                "Northern Cardinal", "Roseate Spoonbill")
+
+
+example_sp_dat <- bind_rows(lapply(ex_sp_list, species_ex_function))
+
+cawa <- example_sp_dat %>%
+  dplyr::filter(COMMON_NAME=="Canada Warbler") %>%
+  ggplot(., aes(y=factor(urban_category, levels=c("Low", "Medium", "High")), x=viirs))+
+  geom_density_ridges()+
+  scale_x_log10()+
+  theme_bw()+
+  theme(axis.text=element_text(color="black"))+
+  xlab("Urbanization (VIIRS night-time lights)")+
+  ylab("Categorical urbanization of buffer")+
+  facet_wrap(~COMMON_NAME)
+
+cawa
+
+rosp <- example_sp_dat %>%
+  dplyr::filter(COMMON_NAME=="Roseate Spoonbill") %>%
+  ggplot(., aes(y=factor(urban_category, levels=c("Low", "Medium", "High")), x=viirs))+
+  geom_density_ridges()+
+  scale_x_log10()+
+  theme_bw()+
+  theme(axis.text=element_text(color="black"))+
+  xlab("Urbanization (VIIRS night-time lights)")+
+  ylab("")+
+  facet_wrap(~COMMON_NAME)
+
+rosp
+
+wwdo <- example_sp_dat %>%
+  dplyr::filter(COMMON_NAME=="White-winged Dove") %>%
+  ggplot(., aes(y=factor(urban_category, levels=c("Low", "Medium", "High")), x=viirs))+
+  geom_density_ridges()+
+  scale_x_log10()+
+  theme_bw()+
+  theme(axis.text=element_text(color="black"))+
+  xlab("")+
+  ylab("")+
+  facet_wrap(~COMMON_NAME)
+
+wwdo
+
+noca <- example_sp_dat %>%
+  dplyr::filter(COMMON_NAME=="Northern Cardinal") %>%
+  ggplot(., aes(y=factor(urban_category, levels=c("Low", "Medium", "High")), x=viirs))+
+  geom_density_ridges()+
+  scale_x_log10()+
+  theme_bw()+
+  theme(axis.text=element_text(color="black"))+
+  xlab("")+
+  ylab("Categorical urbanization of buffer")+
+  facet_wrap(~COMMON_NAME)
+
+noca
+
+
+
+noca + wwdo + cawa + rosp + plot_layout(ncol=2)
+
+
+
+
+
+
+
 
 
 
