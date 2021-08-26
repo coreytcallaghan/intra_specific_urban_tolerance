@@ -96,15 +96,28 @@ ggplot(species_sd, aes(x=N))+
 
 ggsave("Figures/sample_size_per_species.png", width=6.1, height=5.8, units="in")
 
+median(species_sd$N)
+sd(species_sd$N)
+mean(species_sd$N)
+
+# number of species with mean 'negative' response to urbanization
+species_sd %>%
+  dplyr::filter(mean_urban<=0) %>%
+  nrow(.)/nrow(species_sd)
+
+species_sd %>%
+  dplyr::filter(mean_urban>=0) %>%
+  nrow(.)/nrow(species_sd)
+
 # make a boxplot showing the
 # mean urban tolerance scores (so the mean of all urban tolerance scores)
 # versus the sd of urban tolerance scores (the SD of all urban tolerance scores)
 # but because the mean can be negative
 # scale both values from 0-1
 inter_vs_intra <- species_sd %>%
-  mutate(`Intra-specific`=scales::rescale(sd_urban)) %>%
-  mutate(`Inter-specific`=scales::rescale(mean_urban)) %>%
-  dplyr::select(COMMON_NAME, `Intra-specific`, `Inter-specific`) %>%
+  mutate(Intraspecific=scales::rescale(sd_urban)) %>%
+  mutate(Interspecific=scales::rescale(mean_urban)) %>%
+  dplyr::select(COMMON_NAME, Intraspecific, Interspecific) %>%
   pivot_longer(!COMMON_NAME, names_to="type", values_to="value") %>%
   ggplot(.) +
   geom_boxplot(aes(y=type, x=value, fill=type))+
@@ -119,6 +132,39 @@ inter_vs_intra <- species_sd %>%
 inter_vs_intra
 
 ggsave("Figures/inter_vs_intra_boxplot.png", width=6.1, height=5.8, units="in")
+
+# test for whether at the species level
+# 'inter' is greater than 'intra'
+species_sd %>%
+  mutate(Intraspecific=scales::rescale(sd_urban)) %>%
+  mutate(Interspecific=scales::rescale(mean_urban)) %>%
+  dplyr::select(COMMON_NAME, Intraspecific, Interspecific) %>%
+  sample_n(50) %>%
+  pivot_longer(!COMMON_NAME, names_to="type", values_to="value") %>%
+  arrange(type, value) %>%
+  ggplot(.)+
+  geom_point(aes(x=fct_inorder(COMMON_NAME), y=value, color=type))+
+  theme_bw()+
+  theme(axis.text=element_text(color="black"))+
+  coord_flip()+
+  xlab("")+
+  ylab("Standardized value")+
+  scale_color_brewer(palette="Dark2", name="")+
+  theme(legend.position="bottom")
+
+ggsave("Figures/example_species_level_inter_vs_intra_values.png", width=6.2, height=7.4, units="in")
+
+# but summarize this visualization textually for the paper
+inter_vs_intra_difference <- species_sd %>%
+  mutate(Intraspecific=scales::rescale(sd_urban)) %>%
+  mutate(Interspecific=scales::rescale(mean_urban)) %>%
+  dplyr::select(COMMON_NAME, Intraspecific, Interspecific) %>%
+  mutate(difference=Intraspecific-Interspecific)
+
+# percent of species that intra is less than inter?
+inter_vs_intra_difference %>%
+  dplyr::filter(difference<0) %>%
+  nrow(.)/nrow(inter_vs_intra_difference)
 
 # do species that are, on average across all buffers, selecting towards urban habitat
 # versus those that are selecting against it have more variability in their urban scores among
@@ -169,6 +215,21 @@ inter_vs_intra_scatter  / (inter_vs_intra  | positive_vs_negative) + plot_layout
 
 ggsave("Figures/all_species_summary.png", width=7.3, height=6.8, units="in")
 
+# plot sd as a function of N (number of buffers)
+ggplot(species_sd, aes(x=N, y=sd_urban))+
+  geom_point()+
+  theme_bw()+
+  theme(axis.text=element_text(color="black"))+
+  scale_x_log10()+
+  scale_y_log10()+
+  xlab("Number of buffers")+
+  ylab("Species-specific SD of urban scores")+
+  geom_smooth(method="lm")
+
+ggsave("Figures/number_buffers_vs_sd_species_ut.png", width=7.6, height=6.1, units="in")
+
+mod <- lm(log10(sd_urban) ~ log10(N), data=species_sd)
+summary(mod)
 
 # now look at the sd of the buffers
 # a species is found in
@@ -188,22 +249,9 @@ ggplot(species_sd, aes(y=sd_urban, x=sd_total, size=N))+
 
 ggsave("Figures/sd_buffers_vs_sd_species_ut.png", width=7.6, height=6.1, units="in")
 
-# plot sd as a function of N (number of buffers)
-ggplot(species_sd, aes(x=N, y=sd_urban))+
-  geom_point()+
-  theme_bw()+
-  theme(axis.text=element_text(color="black"))+
-  scale_x_log10()+
-  scale_y_log10()+
-  xlab("Number of buffers")+
-  ylab("Species-specific SD of urban scores")+
-  geom_smooth(method="lm")
-
-ggsave("Figures/number_buffers_vs_sd_species_ut.png", width=7.6, height=6.1, units="in")
-
 # fit a simple linear model that puts these together
 # tests for whether across species, there is a significant difference among
-mod <- lm(log10(sd_urban) ~ log10(sd_total) +log10(N), data=species_sd)
+mod <- lm(log10(sd_urban) ~ log10(sd_total) + log10(N), data=species_sd)
 summary(mod)
 
 resids <- species_sd %>%
@@ -279,7 +327,7 @@ map_dat <- potential_points %>%
 us <- ne_countries(scale="medium", returnclass="sf", country = "United States of America")
 
 ggplot()+
-  geom_sf(data=us, fill="gray95", color="black")+
+  geom_sf(data=us, fill="gray25", color="black")+
   geom_sf(data=map_dat, aes(color=UT_median), size=0.5)+
   xlim(130, 10)+
   ylim(20, 50)+
@@ -287,7 +335,8 @@ ggplot()+
   theme(axis.text=element_text(color="black"))+
   theme(panel.grid=element_blank())+
   facet_wrap(~COMMON_NAME, ncol=2)+
-  scale_color_viridis_c(name="Urban tolerance: ")+
+  scale_color_gradient2(midpoint=0, low="blue", mid="white",
+                        high="red", space ="Lab", name="Urban tolerance: ")+
   theme(legend.position="bottom")
 
 ggsave("Figures/map_example_sp_figure.png", width=8.6, height=8.5, units="in")
@@ -397,7 +446,16 @@ species_results %>%
 ### traits
 trait_data <- resids %>%
   left_join(., readRDS("Data/predictor_variables.RDS")) %>%
-  mutate(intra_species_variability=abs(residual))
+  mutate(intra_species_variability=residual)
+
+sum(is.na(trait_data$migration_status))
+sum(is.na(trait_data$migratory_status))
+sum(is.na(trait_data$diet_breadth))
+sum(is.na(trait_data$brain_residual))
+sum(is.na(trait_data$adult_body_mass_g))
+sum(is.na(trait_data$mean_flock_size))
+sum(is.na(trait_data$clutch_size))
+sum(is.na(trait_data$habitat_generalism_scaled))
 
 
 ggplot(trait_data, aes(x=migration_status, y=intra_species_variability))+
@@ -407,12 +465,6 @@ ggplot(trait_data, aes(x=migration_status, y=intra_species_variability))+
   theme(axis.text=element_text(color="black"))
 
 ggplot(trait_data, aes(x=brain_residual, y=intra_species_variability))+
-  geom_point()+
-  theme_bw()+
-  theme(axis.text=element_text(color="black"))+
-  geom_smooth(method="lm")
-
-ggplot(trait_data, aes(x=brain_residual, y=residual))+
   geom_point()+
   theme_bw()+
   theme(axis.text=element_text(color="black"))+
@@ -430,6 +482,190 @@ ggplot(trait_data, aes(x=adult_body_mass_g, y=intra_species_variability))+
   theme(axis.text=element_text(color="black"))+
   geom_smooth(method="lm")+
   scale_x_log10()
+
+
+trait_model_dat <- trait_data %>%
+  dplyr::select(COMMON_NAME, intra_species_variability,
+                adult_body_mass_g, brain_residual, habitat_generalism_scaled,
+                migration_status, clutch_size) %>%
+  dplyr::filter(complete.cases(.))
+
+
+hist(trait_model_dat$intra_species_variability)
+hist(trait_model_dat$habitat_generalism_scaled)
+hist(trait_model_dat$adult_body_mass_g)
+hist(log10(trait_model_dat$adult_body_mass_g))
+hist(trait_model_dat$brain_residual)
+hist(trait_model_dat$clutch_size)
+
+big_trait_mod <- lm(intra_species_variability ~ habitat_generalism_scaled + brain_residual +
+                       log10(adult_body_mass_g) + migration_status + clutch_size, data=trait_model_dat)
+
+summary(big_trait_mod)
+
+standardized.mod <- arm::standardize(big_trait_mod)
+summary(standardized.mod)
+
+trait_plot_dat <- broom::tidy(standardized.mod, conf.int=TRUE) %>%
+  dplyr::filter(term != "(Intercept)") %>%
+  arrange(estimate)
+
+ggplot(trait_plot_dat, aes(x=fct_inorder(term), y=estimate))+
+  geom_point()+
+  geom_errorbar(aes(ymin=conf.low, ymax=conf.high), width=0)+
+  theme_bw()+
+  theme(axis.text=element_text(color="black"))+
+  coord_flip()+
+  geom_hline(yintercept=0, linetype="dashed", color="red")+
+  ylab("Parameter estimate")+
+  xlab("")
+
+# specific variable single regression model
+# brain residual
+brain <- trait_data %>%
+  dplyr::select(COMMON_NAME, intra_species_variability, brain_residual) %>%
+  dplyr::filter(complete.cases(.))
+
+brain_mod <- lm(intra_species_variability ~ brain_residual, data=brain)
+summary(brain_mod)
+brain_mod.standard <- arm::standardize(brain_mod)
+summary(brain_mod.standard)
+
+# habitat generalism
+habitat <- trait_data %>%
+  dplyr::select(COMMON_NAME, intra_species_variability, habitat_generalism_scaled) %>%
+  dplyr::filter(complete.cases(.))
+
+habitat_mod <- lm(intra_species_variability ~ habitat_generalism_scaled, data=habitat)
+summary(habitat_mod)
+habitat_mod.standard <- arm::standardize(habitat_mod)
+summary(habitat_mod.standard)
+
+# body size
+body_dat <- trait_data %>%
+  dplyr::select(COMMON_NAME, intra_species_variability, adult_body_mass_g) %>%
+  dplyr::filter(complete.cases(.)) %>%
+  mutate(log10_body=log10(adult_body_mass_g))
+
+body_mod <- lm(intra_species_variability ~ log10(adult_body_mass_g), data=body_dat)
+summary(body_mod)
+body_mod.standard <- arm::standardize(body_mod)
+summary(body_mod.standard)
+
+# clutch size
+clutch <- trait_data %>%
+  dplyr::select(COMMON_NAME, intra_species_variability, clutch_size) %>%
+  dplyr::filter(complete.cases(.))
+
+clutch_mod <- lm(intra_species_variability ~ clutch_size, data=clutch)
+summary(clutch_mod)
+clutch_mod.standard <- arm::standardize(clutch_mod)
+summary(clutch_mod.standard)
+
+# migration
+migration <- trait_data %>%
+  dplyr::select(COMMON_NAME, intra_species_variability, migration_status) %>%
+  dplyr::filter(complete.cases(.))
+
+migration_mod <- lm(intra_species_variability ~ migration_status, data=migration)
+summary(migration_mod)
+migration_mod.standard <- arm::standardize(migration_mod)
+summary(migration_mod.standard)
+
+single_regression_dat <- broom::tidy(migration_mod.standard, conf.int=TRUE) %>%
+  dplyr::filter(term != "(Intercept)") %>%
+  bind_rows(broom::tidy(clutch_mod.standard, conf.int=TRUE) %>%
+              dplyr::filter(term != "(Intercept)")) %>%
+  bind_rows(broom::tidy(body_mod.standard, conf.int=TRUE) %>%
+              dplyr::filter(term != "(Intercept)")) %>%
+  bind_rows(broom::tidy(habitat_mod.standard, conf.int=TRUE) %>%
+              dplyr::filter(term != "(Intercept)")) %>%
+  bind_rows(broom::tidy(brain_mod.standard, conf.int=TRUE) %>%
+              dplyr::filter(term != "(Intercept)")) %>%
+  mutate(model_type="Single regression")
+
+trait_plot_dat.2 <- broom::tidy(standardized.mod, conf.int=TRUE) %>%
+  dplyr::filter(term != "(Intercept)") %>%
+  mutate(model_type="Multiple regression") %>%
+  arrange(estimate) %>%
+  bind_rows(single_regression_dat)
+
+
+ggplot(trait_plot_dat.2, aes(x=fct_inorder(term), y=estimate, color=model_type))+
+  geom_point()+
+  scale_color_brewer(palette="Dark2")+
+  geom_errorbar(aes(ymin=conf.low, ymax=conf.high), width=0)+
+  theme_bw()+
+  theme(axis.text=element_text(color="black"))+
+  coord_flip()+
+  geom_hline(yintercept=0, linetype="dashed", color="red")+
+  ylab("Parameter estimate")+
+  xlab("")
+
+
+
+
+
+
+
+
+
+
+
+
+trait_data2 <- inter_vs_intra_difference %>%
+  left_join(., readRDS("Data/predictor_variables.RDS")) %>%
+  mutate(intra_species_variability=difference)
+
+
+ggplot(trait_data2, aes(x=migration_status, y=intra_species_variability))+
+  geom_violin()+
+  coord_flip()+
+  theme_bw()+
+  theme(axis.text=element_text(color="black"))
+
+ggplot(trait_data2, aes(x=brain_residual, y=intra_species_variability))+
+  geom_point()+
+  theme_bw()+
+  theme(axis.text=element_text(color="black"))+
+  geom_smooth(method="lm")
+
+ggplot(trait_data2, aes(x=habitat_generalism_scaled, y=intra_species_variability))+
+  geom_point()+
+  theme_bw()+
+  theme(axis.text=element_text(color="black"))+
+  geom_smooth(method="lm")
+
+ggplot(trait_data2, aes(x=adult_body_mass_g, y=intra_species_variability))+
+  geom_point()+
+  theme_bw()+
+  theme(axis.text=element_text(color="black"))+
+  geom_smooth(method="lm")+
+  scale_x_log10()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
