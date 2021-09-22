@@ -12,6 +12,8 @@ library(forcats)
 library(patchwork)
 library(rnaturalearth)
 
+source("R/global_functions.R")
+
 files <- list.files("random_polygon_results/500_km")
 
 # summarize data function
@@ -86,6 +88,14 @@ species_sd <- data_500_km_all %>%
             mean_urban=mean(UT_median),
             sd_total=sd(total_median_viirs),
             range_urban=max(UT_median)-min(UT_median))
+
+# make a 'label' so we can label the six example species on this plot
+ex_sp_list <- c("Mourning Dove", "Vaux's Swift",
+                "Northern Parula", "Peregrine Falcon",
+                "Northern Bobwhite", "Mallard")
+
+species_sd <- species_sd %>%
+  mutate(label=ifelse(COMMON_NAME %in% ex_sp_list, COMMON_NAME, NA))
 
 ggplot(species_sd, aes(x=N))+
   geom_histogram(color="black", fill="gray70")+
@@ -195,6 +205,8 @@ inter_vs_intra_scatter <- species_sd %>%
   ylab("Standard deviation of urban tolerance")+
   xlab("Mean urban tolerance")+
   geom_smooth(method="lm")+ 
+  geom_vline(xintercept=0, color="red", linetype="dashed")+
+  ggrepel::geom_label_repel(aes(label=label))+
   ggtitle("(A)")
 
 inter_vs_intra_scatter
@@ -231,17 +243,20 @@ ggsave("Figures/number_buffers_vs_sd_species_ut.png", width=7.6, height=6.1, uni
 mod <- lm(log10(sd_urban) ~ log10(N), data=species_sd)
 summary(mod)
 
+
+
 # now look at the sd of the buffers
 # a species is found in
 # does that correlate with the sd of the species
-ggplot(species_sd, aes(y=sd_urban, x=sd_total, size=N))+
-  geom_point()+
+ggplot(species_sd, aes(y=sd_urban, x=sd_total))+
+  geom_point(aes(size=N))+
   theme_bw()+
   theme(axis.text=element_text(color="black"))+
   scale_x_log10()+
   scale_y_log10()+
   ylab("Species-specific SD of urban scores")+
   xlab("Buffer SD of urban sampling")+
+  ggrepel::geom_label_repel(aes(label=label))+
   geom_smooth(method="lm", show.legend = FALSE)+
   geom_abline(slope=1, intercept=0, color="red", linetype="dashed")+
   guides(size=guide_legend(title="Number of buffers"))+
@@ -256,6 +271,64 @@ summary(mod)
 
 resids <- species_sd %>%
   mutate(residual=resid(mod))
+
+# Now lets calculate the 'distance' from each point (i.e., species)
+# to the 1:1 line
+# as a measure of 'deviation' from what it should be
+# get the distance from the line for each point
+# function to calculate distance
+dist2d <- function(species) {
+  dat <- species_sd %>%
+    dplyr::filter(COMMON_NAME==species)
+  a <- c(dat$sd_total, dat$sd_urban)
+  b = c(0, 0)
+  c = c(1, 1)
+  v1 <- b - c
+  v2 <- a - b
+  m1 <- cbind(v1,v2)
+  d <- data.frame(distance=abs(det(m1))/sqrt(sum(v1*v1)),
+                  COMMON_NAME=species)
+  return(d)
+} 
+
+distance_from_line <- bind_rows(lapply(unique(species_sd$COMMON_NAME), dist2d))
+
+distance_from_line %>%
+  dplyr::filter(distance<=1) %>%
+  nrow()/nrow(distance_from_line)
+
+# let's remake this figure again but try to pretty it up
+datPoly_above <- buildPoly(range(species_sd$sd_total), range(species_sd$sd_urban),
+                           slope=1, intercept=0, above=TRUE)
+
+datPoly_above <- data.frame(x=c(-Inf, Inf, Inf), 
+                            y=c(0.1, 10, 9.8))
+
+datPoly_below <- buildPoly(range(species_sd$sd_total), range(species_sd$sd_total),
+                           slope=1, intercept=0, above=FALSE)
+# now look at the sd of the buffers
+# a species is found in
+# does that correlate with the sd of the species
+# ideally we can vizualize this in log-log relationship, but it doesn't seem to work well!
+ggplot(species_sd, aes(y=sd_urban, x=sd_total))+
+  #scale_x_log10()+
+  #scale_y_log10()+
+  geom_polygon(data=datPoly_above, aes(x=x, y=y), alpha=0.2, fill="blue")+
+  geom_polygon(data=datPoly_below, aes(x=x, y=y), alpha=0.2, fill="red")+
+  geom_point(aes(size=N))+
+  theme_bw()+
+  theme(axis.text=element_text(color="black"))+
+  ylab("Species-specific SD of urban scores")+
+  xlab("Buffer SD of urban sampling")+
+  ggrepel::geom_label_repel(aes(label=label))+
+  geom_smooth(method="lm", show.legend = FALSE)+
+  geom_abline(slope=1, intercept=0, color="red", linetype="dashed")+
+  guides(size=guide_legend(title="Number of buffers"))+
+  theme(legend.position="bottom")
+
+ggsave("Figures/sd_buffers_vs_sd_species_ut.png", width=7.6, height=6.1, units="in")
+
+
 
 
 
@@ -312,8 +385,8 @@ plot_species_map <- function(species_name){
 ex_sp_list <- c("Canada Warbler", "Peregrine Falcon",
                 "Northern Cardinal", "Roseate Spoonbill")
 
-ex_sp_list <- c("Mourning Dove", "Mountain Chickadee",
-                "Northern Parula", "Pygmy Nuthatch",
+ex_sp_list <- c("Mourning Dove", "Vaux's Swift",
+                "Northern Parula", "Peregrine Falcon",
                 "Northern Bobwhite", "Mallard")
 
 map_dat <- potential_points %>%
@@ -321,10 +394,16 @@ map_dat <- potential_points %>%
   mutate(sample=as.character(as.integer(sample))) %>%
   left_join(., data_500_km_all %>%
               ungroup() %>%
-              dplyr::filter(COMMON_NAME %in% ex_sp_list))
+              dplyr::filter(COMMON_NAME %in% ex_sp_list)) %>%
+  ungroup() %>%
+  mutate(across(COMMON_NAME, factor, levels=c("Peregrine Falcon", "Vaux's Swift",
+                                                   "Mallard", "Mourning Dove",
+                                                   "Northern Bobwhite", "Northern Parula")))
 
 # read in map of US
 us <- ne_countries(scale="medium", returnclass="sf", country = "United States of America")
+
+pal <- wesanderson::wes_palette("Zissou1", 20, type = "continuous")
 
 ggplot()+
   geom_sf(data=us, fill="gray25", color="black")+
@@ -335,8 +414,7 @@ ggplot()+
   theme(axis.text=element_text(color="black"))+
   theme(panel.grid=element_blank())+
   facet_wrap(~COMMON_NAME, ncol=2)+
-  scale_color_gradient2(midpoint=0, low="blue", mid="white",
-                        high="red", space ="Lab", name="Urban tolerance: ")+
+  scale_color_gradientn(colours=pal, name="Urban tolerance: ")+
   theme(legend.position="bottom")
 
 ggsave("Figures/map_example_sp_figure.png", width=8.6, height=8.5, units="in")
@@ -384,14 +462,14 @@ species_scatter_function <- function(species_name){
   
 }
 
-moch <- species_scatter_function("Mountain Chickadee")
+pefa <- species_scatter_function("Peregrine Falcon")
 modo <- species_scatter_function("Mourning Dove")
 nopa <- species_scatter_function("Northern Parula")
-pynu <- species_scatter_function("Pygmy Nuthatch")
+vasw <- species_scatter_function("Vaux's Swift")
 nobo <- species_scatter_function("Northern Bobwhite")
 mall <- species_scatter_function("Mallard")
 
-mall + moch + modo + nobo + nopa + pynu + plot_layout(ncol=2)
+mall + pefa + modo + nobo + nopa + vasw + plot_layout(ncol=2)
 
 data_500_km_all %>%
   ungroup() %>%
@@ -408,7 +486,6 @@ data_500_km_all %>%
 # run a simple lm and get the parameter estimate
 # between UT median and the total median VIIRS for the buffers that a species
 # occurs in
-
 species_model_function <- function(species_name){
   
   tmp <- data_500_km_all %>%
@@ -431,7 +508,10 @@ species_results <- bind_rows(lapply(species_sd %>%
                                       dplyr::filter(N>10) %>%
                                       .$COMMON_NAME, species_model_function))
 
-
+species_results %>%
+  dplyr::filter(term=="total_median_viirs") %>%
+  dplyr::filter(estimate<=0) %>%
+  nrow()/length(unique(species_results$COMMON_NAME))
 
 species_results %>%
   dplyr::filter(term=="total_median_viirs") %>%
@@ -439,6 +519,103 @@ species_results %>%
   geom_point()+
   geom_smooth(method="lm")
 
+species_results %>%
+  left_join(., distance_from_line, by="COMMON_NAME") %>%
+  dplyr::filter(term=="total_median_viirs") %>%
+  ggplot(., aes(y=estimate, x=distance))+
+  geom_point()+
+  geom_smooth(method="lm")
+
+#########################
+#########################
+######## DOES TRAITS MATTER?
+########## look at two different model structures - 1 using the mean interspecific value
+########### and the other allowing for the variability in the
+traits <- readRDS("Data/predictor_variables.RDS")
+
+# mean interspecific model
+mean_inter_mod_dat <- species_sd %>%
+  left_join(., traits) %>%
+  dplyr::select(COMMON_NAME, mean_urban, N, adult_body_mass_g, brain_residual, 
+                habitat_generalism_scaled, migration_status, clutch_size) %>%
+  dplyr::filter(complete.cases(.))
+
+
+hist(mean_inter_mod_dat$mean_urban)
+
+inter_mod <- lm(mean_urban ~ habitat_generalism_scaled + log10(adult_body_mass_g) +
+                  brain_residual + clutch_size + migration_status, data=mean_inter_mod_dat)
+
+inter_mod.s <- arm::standardize(inter_mod)
+
+broom::tidy(inter_mod.s, conf.int=TRUE)
+
+intra_mod_dat <- data_500_km_all %>%
+  left_join(., traits, by="COMMON_NAME") %>%
+  ungroup() %>%
+  dplyr::select(COMMON_NAME, UT_mean, sample, adult_body_mass_g, brain_residual, 
+                habitat_generalism_scaled, migration_status, clutch_size) %>%
+  dplyr::filter(complete.cases(.))
+
+length(unique(intra_mod_dat$COMMON_NAME))
+
+intra_mod <- lme4::lmer(UT_mean ~ habitat_generalism_scaled + log10(adult_body_mass_g) +
+                    brain_residual + clutch_size + migration_status + (1|sample), data=intra_mod_dat)
+
+intra_mod.s <- arm::standardize(intra_mod)
+
+broom.mixed::tidy(intra_mod.s,, conf.int=TRUE)
+
+summary(inter_mod.s)
+summary(intra_mod.s)
+
+# results of both models/approaches together
+comparison <- broom::tidy(inter_mod.s, conf.int=TRUE) %>%
+  mutate(intercept=as.numeric(broom::tidy(inter_mod.s, conf.int=TRUE)[1,2])) %>%
+  rename(slope=estimate) %>%
+  mutate(Analysis="Mean urban tolerance") %>%
+  slice(2:6) %>%
+  bind_rows(broom.mixed::tidy(intra_mod.s,, conf.int=TRUE) %>%
+              dplyr::select(3:8) %>%
+              slice(2:6) %>%
+              rename(slope=estimate) %>%
+              mutate(intercept=as.numeric(broom.mixed::tidy(intra_mod.s,, conf.int=TRUE)[1,4])) %>%
+              mutate(Analysis="Varying urban tolerance"))
+
+a <- ggplot(comparison, aes(x=Analysis, y=slope, color=term, group=term))+
+  geom_point()+
+  geom_line()+
+  #coord_flip()+
+  theme_bw()+
+  theme(axis.text=element_text(color="black"))+
+  geom_hline(yintercept=0, color="black", linetype="dashed")+
+  scale_color_brewer(palette="Dark2")+
+  ggtitle("(A)")
+
+ggplot(comparison, aes(x=term, y=slope, color=Analysis, group=Analysis))+
+  geom_point()+
+  coord_flip()+
+  theme_bw()+
+  theme(axis.text=element_text(color="black"))+
+  geom_hline(yintercept=0, color="black", linetype="dashed")+
+  scale_color_brewer(palette="Dark2")+
+  geom_errorbar(aes(ymin=conf.low, ymax=conf.high))
+
+b <- comparison %>%
+  dplyr::select(term, slope, Analysis) %>%
+  tidyr::pivot_wider(names_from=Analysis, values_from=slope) %>%
+  ggplot(., aes(x=`Mean urban tolerance`, y=`Varying urban tolerance`))+
+  geom_point()+
+  theme_bw()+
+  theme(axis.text=element_text(color="black"))+
+  geom_smooth(method="lm")+
+  geom_hline(yintercept=0, linetype="dashed", color="red")+
+  geom_vline(xintercept=0, linetype="dashed", color="red")+
+  ggtitle("(B)")
+
+a + b + plot_layout(ncol=1)
+
+ggsave("Figures/lm_vs_lmm_approach.png", width=6.2, height=8.3, units="in")
 
 ########################
 ########################
@@ -648,6 +825,8 @@ ggplot(trait_data2, aes(x=adult_body_mass_g, y=intra_species_variability))+
 
 
 
+#############################################################
+#############################################################
 
 
 
