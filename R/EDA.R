@@ -87,7 +87,10 @@ species_sd <- data_500_km_all %>%
             sd_urban=sd(UT_median),
             mean_urban=mean(UT_median),
             sd_total=sd(total_median_viirs),
-            range_urban=max(UT_median)-min(UT_median))
+            mean_total=mean(total_median_viirs),
+            range_urban=max(UT_median)-min(UT_median)) %>%
+  mutate(CV_sp=sd_urban/mean_urban) %>%
+  mutate(CV_buffer=sd_total/mean_total)
 
 # make a 'label' so we can label the six example species on this plot
 ex_sp_list <- c("Mourning Dove", "Vaux's Swift",
@@ -525,6 +528,101 @@ species_results %>%
   ggplot(., aes(y=estimate, x=distance))+
   geom_point()+
   geom_smooth(method="lm")
+
+
+
+
+######################################################
+######################################################
+############### Run phylo model of main model
+################# as a test
+#########################################
+##########################################
+#### Now start phylo stuff ###############
+library(phylolm)
+library(phylosignal)
+library(phylobase)
+library(phytools)
+
+
+# first join the tiplabel with the
+# dataset
+dat1 <- species_sd %>%
+  left_join(., read_csv("Data/clements_clean.csv") %>%
+              rename(COMMON_NAME=ebird_COMMON_NAME)) %>%
+  dplyr::filter(complete.cases(TipLabel)) %>%
+  group_by(COMMON_NAME) %>%
+  slice(1) %>%
+  mutate(TipLabel2=TipLabel) %>%
+  column_to_rownames(var="TipLabel")
+
+length(unique(dat1$COMMON_NAME))==length(unique(dat1$TipLabel2))
+
+# function to read one tree in
+read_one_tree<-function(path, x=1){
+  
+  one_bird_tree <- ape::read.tree(file = "phylo/phy.tre")[[x]]
+  
+  return(one_bird_tree)
+}
+
+bird_tree <- read_one_tree()
+
+
+# function to read all trees in
+read_all_trees<-function(path){
+  
+  ape::read.tree(file = "phylo/phy.tre")
+  
+}
+
+all_trees <- read_all_trees()
+
+# a function to subset the tree to the tips of the 245 species
+# described above
+subset_tree <- function(bird_tree, dataset) {
+  
+  non_usa_sp <- bird_tree$tip.label[!bird_tree$tip.label %in% dataset$TipLabel]
+  
+  usa_bird_tree <- drop.tip(bird_tree, non_usa_sp)
+  
+  return(usa_bird_tree)
+}
+
+usa_tree <- subset_tree(bird_tree, dat1)
+
+# need to get a consensus tree to run the phylogenetic analyses on
+# first subset all trees to the 245 species
+non_usa_sp <- bird_tree$tip.label[!bird_tree$tip.label %in% dat1$TipLabel]
+
+subset_trees <- lapply(all_trees, drop.tip, tip=non_usa_sp)
+
+con_tree <- consensus.edges(subset_trees, consensus.tree=consensus(subset_trees, p=0.5, check.labels=TRUE))
+
+mod <- lm(log10(sd_urban) ~ log10(sd_total) + log10(N), data=species_sd)
+summary(mod)
+
+phymod <- phylolm(log10(sd_urban) ~ log10(sd_total) + log10(N), 
+                  data=dat1, phy=con_tree, na.action="na.fail")
+summary(phymod)
+
+#########################################################
+#########################################################
+# get an example distribution of scores
+# for a species
+data_500_km_all %>%
+  dplyr::filter(COMMON_NAME=="Mourning Dove") %>%
+  ggplot(., aes(x=UT_median))+
+  geom_histogram(fill="gray80", color="black")+
+  theme_minimal()+
+  theme(axis.text.x=element_blank())+
+  theme(axis.title.x=element_blank())+
+  theme(axis.text.y=element_text(color='black'))+
+  xlab("Urban tolerance scores")+
+  theme(panel.grid=element_blank())+
+  coord_flip()
+
+
 
 #########################
 #########################
@@ -1041,7 +1139,7 @@ noca
 noca + wwdo + cawa + rosp + plot_layout(ncol=2)
 
 
-
+#####################################################################
 
 
 
