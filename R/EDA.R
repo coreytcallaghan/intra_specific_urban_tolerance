@@ -314,10 +314,10 @@ datPoly_below <- buildPoly(range(species_sd$sd_total), range(species_sd$sd_total
 # does that correlate with the sd of the species
 # ideally we can vizualize this in log-log relationship, but it doesn't seem to work well!
 ggplot(species_sd, aes(y=sd_urban, x=sd_total))+
-  #scale_x_log10()+
-  #scale_y_log10()+
-  geom_polygon(data=datPoly_above, aes(x=x, y=y), alpha=0.2, fill="blue")+
-  geom_polygon(data=datPoly_below, aes(x=x, y=y), alpha=0.2, fill="red")+
+  scale_x_log10()+
+  scale_y_log10()+
+  #geom_polygon(data=datPoly_above, aes(x=x, y=y), alpha=0.2, fill="blue")+
+  #geom_polygon(data=datPoly_below, aes(x=x, y=y), alpha=0.2, fill="red")+
   geom_point(aes(size=N))+
   theme_bw()+
   theme(axis.text=element_text(color="black"))+
@@ -529,8 +529,44 @@ species_results %>%
   geom_point()+
   geom_smooth(method="lm")
 
+#######################################################
+#######################################################
+################ one additional test for inter-specific vs intraspecific
+################ variability
+# the relationship between mean urban tolerance (interspecific measure) and
+# randomly sampled urban tolerance at the species level many times
+# make a function to do this
+correlation_between_mean_and_random_ut <- function(id_number){
+  
+  tmp <- data_500_km_all %>%
+    group_by(COMMON_NAME) %>%
+    sample_n(1) %>%
+    dplyr::select(COMMON_NAME, UT_median) %>%
+    left_join(., species_sd %>%
+                dplyr::select(COMMON_NAME, mean_urban))
+  
+  ggplot(tmp, aes(x=mean_urban, y=UT_median))+
+    geom_point()+
+    theme_bw()+
+    geom_smooth(method="lm")
+  
+  summary_df <- broom::glance(lm(UT_median ~ mean_urban, data=tmp)) %>%
+    mutate(draw=id_number)
+  
+  return(summary_df)
+  
+}
 
+inter_vs_intra_resampling <- bind_rows(lapply(c(1:1000), correlation_between_mean_and_random_ut))
 
+ggplot(inter_vs_intra_resampling, aes(x=r.squared))+
+  geom_histogram(fill="gray80", color="black")+
+  theme_bw()+
+  theme(axis.text=element_text(color="black"))+
+  xlab("R squared")+
+  ylab("Number of random samples")
+
+ggsave("Figures/randomly_sampling_correlations.png", width=8.6, height=8.5, units="in")
 
 ######################################################
 ######################################################
@@ -609,9 +645,10 @@ summary(phymod)
 #########################################################
 #########################################################
 # get an example distribution of scores
-# for a species
+# for 4 species
 data_500_km_all %>%
-  dplyr::filter(COMMON_NAME=="Mourning Dove") %>%
+  dplyr::filter(COMMON_NAME %in% c("Mourning Dove", "Song Sparrow",
+                "Northern Bobwhite", "Mallard")) %>%
   ggplot(., aes(x=UT_median))+
   geom_histogram(fill="gray80", color="black")+
   theme_minimal()+
@@ -620,9 +657,12 @@ data_500_km_all %>%
   theme(axis.text.y=element_text(color='black'))+
   xlab("Urban tolerance scores")+
   theme(panel.grid=element_blank())+
+  facet_wrap(~COMMON_NAME, scales="free")+
+  theme(strip.background = element_blank(),
+    strip.text.x = element_blank())+
   coord_flip()
 
-
+ggsave("Figures/example_distribution_figures.png", height=3, width=4.2, units="in")
 
 #########################
 #########################
