@@ -140,7 +140,8 @@ inter_vs_intra <- species_sd %>%
   xlab("Standardized urban tolerance metric")+
   ylab("")+
   guides(fill=FALSE)+ 
-  ggtitle("(B)")
+  ggtitle("(B)")+
+  theme(panel.grid=element_blank())
 
 inter_vs_intra
 
@@ -193,7 +194,8 @@ positive_vs_negative <- species_sd %>%
   ylab("Standard deviation of urban tolerance")+
   xlab("")+
   guides(fill=FALSE)+ 
-  ggtitle("(C)")
+  ggtitle("(C)")+
+  theme(panel.grid=element_blank())
 
 positive_vs_negative
 
@@ -210,7 +212,8 @@ inter_vs_intra_scatter <- species_sd %>%
   geom_smooth(method="lm")+ 
   geom_vline(xintercept=0, color="red", linetype="dashed")+
   ggrepel::geom_label_repel(aes(label=label))+
-  ggtitle("(A)")
+  ggtitle("(A)")+
+  theme(panel.grid=element_blank())
 
 inter_vs_intra_scatter
 
@@ -257,13 +260,14 @@ ggplot(species_sd, aes(y=sd_urban, x=sd_total))+
   theme(axis.text=element_text(color="black"))+
   scale_x_log10()+
   scale_y_log10()+
-  ylab("Species-specific SD of urban scores")+
-  xlab("Buffer SD of urban sampling")+
-  ggrepel::geom_label_repel(aes(label=label))+
+  ylab("Urban tolerance SD")+
+  xlab("Buffer level SD")+
   geom_smooth(method="lm", show.legend = FALSE)+
   geom_abline(slope=1, intercept=0, color="red", linetype="dashed")+
   guides(size=guide_legend(title="Number of buffers"))+
-  theme(legend.position="bottom")
+  ggrepel::geom_label_repel(aes(label=label))+
+  theme(legend.position="bottom")+
+  theme(panel.grid=element_blank())
 
 ggsave("Figures/sd_buffers_vs_sd_species_ut.png", width=7.6, height=6.1, units="in")
 
@@ -321,15 +325,15 @@ ggplot(species_sd, aes(y=sd_urban, x=sd_total))+
   geom_point(aes(size=N))+
   theme_bw()+
   theme(axis.text=element_text(color="black"))+
-  ylab("Species-specific SD of urban scores")+
-  xlab("Buffer SD of urban sampling")+
+  ylab("Urban tolerance SD")+
+  xlab("Buffer level SD")+
   ggrepel::geom_label_repel(aes(label=label))+
   geom_smooth(method="lm", show.legend = FALSE)+
   geom_abline(slope=1, intercept=0, color="red", linetype="dashed")+
   guides(size=guide_legend(title="Number of buffers"))+
   theme(legend.position="bottom")
 
-ggsave("Figures/sd_buffers_vs_sd_species_ut.png", width=7.6, height=6.1, units="in")
+#ggsave("Figures/sd_buffers_vs_sd_species_ut.png", width=7.6, height=6.1, units="in")
 
 
 
@@ -565,6 +569,8 @@ ggplot(inter_vs_intra_resampling, aes(x=r.squared))+
   theme(axis.text=element_text(color="black"))+
   xlab("R squared")+
   ylab("Number of random samples")
+
+mean(inter_vs_intra_resampling$r.squared)
 
 ggsave("Figures/randomly_sampling_correlations.png", width=8.6, height=8.5, units="in")
 
