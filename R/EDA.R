@@ -297,6 +297,34 @@ ggplot(species_sd, aes(y=sd_urban_unadjusted, x=sd_total))+
   theme(legend.position="bottom")+
   theme(panel.grid=element_blank())
 
+# test how the number of buffers standard deviation correlates
+# with sample size
+buffer_urban <- data_500_km_all %>%
+  ungroup() %>%
+  dplyr::select(total_median_viirs, sample) %>%
+  distinct()
+
+random_sample_buffers <- function(sample_size){
+  
+  samp <- buffer_urban %>%
+    sample_n(sample_size) %>%
+    summarize(sd=sd(total_median_viirs)) %>%
+    mutate(number_buffers=sample_size)
+  
+  return(samp)
+}
+
+# apply this function on a sequence from 10, 2000
+sampled_sd <- bind_rows(lapply(seq(10, 2000, by=10), random_sample_buffers))
+
+ggplot(sampled_sd, aes(x=number_buffers, y=sd))+
+  geom_point()+
+  theme_bw()+
+  theme(axis.text=element_text(color="black"))+
+  xlab("Number of randomly sampled buffers")+
+  ylab("Standard deviation")
+
+
 # Now lets calculate the 'distance' from each point (i.e., species)
 # to the 1:1 line
 # as a measure of 'deviation' from what it should be
