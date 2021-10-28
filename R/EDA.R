@@ -85,6 +85,8 @@ species_sd <- data_500_km_all %>%
   group_by(COMMON_NAME) %>%
   summarize(N=n(),
             sd_urban=sd(UT_median),
+            sd_urban_unadjusted=sd(median_viirs),
+            mean_urban_unadjusted=mean(median_viirs),
             mean_urban=mean(UT_median),
             sd_total=sd(total_median_viirs),
             mean_total=mean(total_median_viirs),
@@ -278,6 +280,22 @@ summary(mod)
 
 resids <- species_sd %>%
   mutate(residual=resid(mod))
+
+# test whether urban unadjusted looks like
+ggplot(species_sd, aes(y=sd_urban_unadjusted, x=sd_total))+
+  geom_point(aes(size=N))+
+  theme_bw()+
+  theme(axis.text=element_text(color="black"))+
+  scale_x_log10()+
+  scale_y_log10()+
+  ylab("Urban tolerance SD")+
+  xlab("Buffer level SD")+
+  geom_smooth(method="lm", show.legend = FALSE)+
+  geom_abline(slope=1, intercept=0, color="red", linetype="dashed")+
+  guides(size=guide_legend(title="Number of buffers"))+
+  ggrepel::geom_label_repel(aes(label=label))+
+  theme(legend.position="bottom")+
+  theme(panel.grid=element_blank())
 
 # Now lets calculate the 'distance' from each point (i.e., species)
 # to the 1:1 line
