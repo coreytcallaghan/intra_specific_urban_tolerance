@@ -91,7 +91,7 @@ species_sd <- data_500_km_all %>%
             sd_total=sd(total_median_viirs),
             mean_total=mean(total_median_viirs),
             range_urban=max(UT_median)-min(UT_median)) %>%
-  mutate(CV_sp=sd_urban/mean_urban) %>%
+  mutate(CV_sp=sd_urban_unadjusted/mean_urban_unadjusted) %>%
   mutate(CV_buffer=sd_total/mean_total)
 
 # make a 'label' so we can label the six example species on this plot
@@ -288,7 +288,7 @@ ggplot(species_sd, aes(y=sd_urban_unadjusted, x=sd_total))+
   theme(axis.text=element_text(color="black"))+
   scale_x_log10()+
   scale_y_log10()+
-  ylab("Urban tolerance SD")+
+  ylab("Urban tolerance SD (unadjusted)")+
   xlab("Buffer level SD")+
   geom_smooth(method="lm", show.legend = FALSE)+
   geom_abline(slope=1, intercept=0, color="red", linetype="dashed")+
@@ -296,6 +296,38 @@ ggplot(species_sd, aes(y=sd_urban_unadjusted, x=sd_total))+
   ggrepel::geom_label_repel(aes(label=label))+
   theme(legend.position="bottom")+
   theme(panel.grid=element_blank())
+
+ggplot(species_sd, aes(y=sd_urban_unadjusted, x=sd_urban))+
+  geom_point(aes(size=N))+
+  theme_bw()+
+  theme(axis.text=element_text(color="black"))+
+  scale_x_log10()+
+  scale_y_log10()+
+  ylab("Urban tolerance SD (unadjusted)")+
+  xlab("Urban tolerance SD (adjusted)")+
+  geom_smooth(method="lm", show.legend = FALSE)+
+  geom_abline(slope=1, intercept=0, color="red", linetype="dashed")+
+  guides(size=guide_legend(title="Number of buffers"))+
+  ggrepel::geom_label_repel(aes(label=label))+
+  theme(legend.position="bottom")+
+  theme(panel.grid=element_blank())
+
+# plot CV (for unadjusted urban tolerance)
+ggplot(species_sd, aes(x=CV_sp, y=CV_buffer))+
+  geom_point(aes(size=N))+
+  theme_bw()+
+  theme(axis.text=element_text(color="black"))+
+  scale_x_log10()+
+  scale_y_log10()+
+  ylab("Urban tolerance CV")+
+  xlab("Buffer level CV")+
+  geom_smooth(method="lm", show.legend = FALSE)+
+  geom_abline(slope=1, intercept=0, color="red", linetype="dashed")+
+  guides(size=guide_legend(title="Number of buffers"))+
+  ggrepel::geom_label_repel(aes(label=label))+
+  theme(legend.position="bottom")+
+  theme(panel.grid=element_blank())
+
 
 # test how the number of buffers standard deviation correlates
 # with sample size
