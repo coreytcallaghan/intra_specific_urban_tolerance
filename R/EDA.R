@@ -115,6 +115,13 @@ median(species_sd$N)
 sd(species_sd$N)
 mean(species_sd$N)
 
+min(species_sd$sd_urban)
+max(species_sd$sd_urban)
+median(species_sd$sd_urban)
+sd(species_sd$sd_urban)
+mean(species_sd$sd_urban)
+
+
 # number of species with mean 'negative' response to urbanization
 species_sd %>%
   dplyr::filter(mean_urban<=0) %>%
@@ -219,6 +226,21 @@ inter_vs_intra_scatter <- species_sd %>%
 
 inter_vs_intra_scatter
 
+# also calculate the median versus the interquartile range
+data_500_km_all %>%
+  group_by(COMMON_NAME) %>%
+  summarize(N=n(),
+            median=median(UT_median),
+            iqr=IQR(UT_median)) %>%
+  ggplot(., aes(x=median, y=iqr))+
+  geom_point()+
+  theme_bw()+
+  theme(axis.text=element_text(color="black"))+
+  ylab("Interquartile range")+
+  xlab("Median urban tolerance")+
+  geom_smooth(method="lm")+ 
+  geom_vline(xintercept=0, color="red", linetype="dashed")
+
 # make a plot where things are ranked by species
 # not loving it, but will save in here for now
 inter_vs_intra_species <- species_sd %>%
@@ -280,6 +302,45 @@ summary(mod)
 
 resids <- species_sd %>%
   mutate(residual=resid(mod))
+
+pal <- wesanderson::wes_palette("Zissou1", 20, type = "continuous")
+
+# repeat this figure but color the points based on mean
+# urban tolerance of a species
+ggplot(species_sd, aes(y=sd_urban, x=sd_total))+
+  geom_point(aes(size=N, color=mean_urban))+
+  scale_color_gradientn(colours=pal, name="Urban tolerance: ")+
+  theme_bw()+
+  theme(axis.text=element_text(color="black"))+
+  scale_x_log10()+
+  scale_y_log10()+
+  ylab("Urban tolerance SD")+
+  xlab("Buffer level SD")+
+  geom_smooth(method="lm", show.legend = FALSE)+
+  geom_abline(slope=1, intercept=0, color="red", linetype="dashed")+
+  guides(size=guide_legend(title="Number of buffers"))+
+  ggrepel::geom_label_repel(aes(label=label))+
+  theme(legend.position="bottom")+
+  theme(panel.grid=element_blank()) 
+
+ggsave("Figures/sd_buffers_vs_sd_species_ut_with_points_colored.png", width=7.6, height=6.1, units="in")
+
+# repeat this figure, but only for the species that are more 'common'
+ggplot(species_sd %>%
+         dplyr::filter(N>1000), aes(y=sd_urban, x=sd_total))+
+  geom_point(aes(size=N))+
+  theme_bw()+
+  theme(axis.text=element_text(color="black"))+
+  scale_x_log10()+
+  scale_y_log10()+
+  ylab("Urban tolerance SD")+
+  xlab("Buffer level SD")+
+  geom_smooth(method="lm", show.legend = FALSE)+
+  geom_abline(slope=1, intercept=0, color="red", linetype="dashed")+
+  guides(size=guide_legend(title="Number of buffers"))+
+  ggrepel::geom_label_repel(aes(label=label))+
+  theme(legend.position="bottom")+
+  theme(panel.grid=element_blank())
 
 # test whether urban unadjusted looks like
 ggplot(species_sd, aes(y=sd_urban_unadjusted, x=sd_total))+
