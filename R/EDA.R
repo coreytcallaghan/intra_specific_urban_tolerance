@@ -226,6 +226,12 @@ inter_vs_intra_scatter <- species_sd %>%
 
 inter_vs_intra_scatter
 
+hist(species_sd$mean_urban)
+hist(species_sd$sd_urban)
+mod <- lm(mean_urban ~ sd_urban, data=species_sd)
+summary(mod)
+
+
 # also calculate the median versus the interquartile range
 data_500_km_all %>%
   group_by(COMMON_NAME) %>%
