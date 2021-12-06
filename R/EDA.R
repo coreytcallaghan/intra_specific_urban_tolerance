@@ -94,6 +94,10 @@ species_sd <- data_500_km_all %>%
   mutate(CV_sp=sd_urban_unadjusted/mean_urban_unadjusted) %>%
   mutate(CV_buffer=sd_total/mean_total)
 
+species_sd %>%
+  dplyr::select(COMMON_NAME, N, sd_urban, mean_urban) %>%
+  readr::write_csv(., "submissions/Journal of Animal Ecology/Table_S1.csv")
+
 # make a 'label' so we can label the six example species on this plot
 ex_sp_list <- c("Mourning Dove", "Vaux's Swift",
                 "Northern Parula", "Peregrine Falcon",
