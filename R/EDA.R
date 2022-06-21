@@ -289,12 +289,12 @@ summary(mod)
 # a species is found in
 # does that correlate with the sd of the species
 ggplot(species_sd, aes(y=sd_urban, x=sd_total))+
-  geom_point(aes(size=N))+
+  geom_point(aes(size=N), alpha=0.4)+
   theme_bw()+
   theme(axis.text=element_text(color="black"))+
   scale_x_log10()+
   scale_y_log10()+
-  ylab("Urban tolerance SD")+
+  ylab("Standard deviation of urban tolerance")+
   xlab("Buffer level SD")+
   geom_smooth(method="lm", show.legend = FALSE)+
   geom_abline(slope=1, intercept=0, color="red", linetype="dashed")+
@@ -578,7 +578,7 @@ ggsave("Figures/map_example_sp_figure.png", width=8.6, height=8.5, units="in")
 # function to make a tiny plot
 # for each species
 # but with a fitted gam model onto it
-species_scatter_function <- function(species_name){
+species_scatter_function_plot <- function(species_name){
   
   tmp <- data_500_km_all %>%
     dplyr::filter(COMMON_NAME==species_name)
@@ -618,12 +618,12 @@ species_scatter_function <- function(species_name){
   
 }
 
-pefa <- species_scatter_function("Peregrine Falcon")
-modo <- species_scatter_function("Mourning Dove")
-nopa <- species_scatter_function("Northern Parula")
-vasw <- species_scatter_function("Vaux's Swift")
-nobo <- species_scatter_function("Northern Bobwhite")
-mall <- species_scatter_function("Mallard")
+pefa <- species_scatter_function_plot("Peregrine Falcon")
+modo <- species_scatter_function_plot("Mourning Dove")
+nopa <- species_scatter_function_plot("Northern Parula")
+vasw <- species_scatter_function_plot("Vaux's Swift")
+nobo <- species_scatter_function_plot("Northern Bobwhite")
+mall <- species_scatter_function_plot("Mallard")
 
 mall + pefa + modo + nobo + nopa + vasw + plot_layout(ncol=2)
 
