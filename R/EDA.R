@@ -160,6 +160,15 @@ inter_vs_intra
 
 ggsave("Figures/inter_vs_intra_boxplot.png", width=6.1, height=5.8, units="in")
 
+# fit a model for this figure
+species_sd %>%
+  mutate(Intraspecific=scales::rescale(sd_urban)) %>%
+  mutate(Interspecific=scales::rescale(mean_urban)) %>%
+  dplyr::select(COMMON_NAME, Intraspecific, Interspecific) %>%
+  pivot_longer(!COMMON_NAME) %>%
+  lm(value ~ name, data=.) %>%
+  summary()
+
 # test for whether at the species level
 # 'inter' is greater than 'intra'
 species_sd %>%
@@ -633,6 +642,16 @@ data_500_km_all %>%
   ggplot(., aes(y=UT_median, x=total_median_viirs))+
   geom_point()+
   facet_wrap(~COMMON_NAME, scales="free")+
+  theme_bw()+
+  theme(axis.text=element_text(color="black"))+
+  geom_smooth(method="lm")
+
+data_500_km_all %>%
+  ungroup() %>%
+  dplyr::filter(COMMON_NAME %in% ex_sp_list) %>%
+  ggplot(., aes(y=UT_median, x=total_median_viirs))+
+  geom_point()+
+  facet_wrap(~COMMON_NAME)+
   theme_bw()+
   theme(axis.text=element_text(color="black"))+
   geom_smooth(method="lm")
