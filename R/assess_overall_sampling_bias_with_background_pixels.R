@@ -41,11 +41,18 @@ checklists_sf <- checklists %>%
 
 
 
-df <- raster("Data/viirsClip_maxpixels-0000000000-0000000000.tif") %>%
+df <- raster("Data/viirsClip_maxpixels.tif") %>%
   as.data.frame(xy = TRUE)
 
 
-
+ggplot()+
+  geom_density(data=df, aes(x=viirsClip_maxpixels), color="blue")+
+  geom_density(data=checklists_sf %>%
+                 as.data.frame(), aes(x=viirs), color="red", linetype="dashed")+
+  scale_x_log10()+
+  theme_bw()+
+  theme(axis.text=element_text(color="black"))+
+  xlab("VIIRS")
 
 
 
